@@ -192,7 +192,7 @@ async def dingtalk_webhook(request: Request):
 
 ## 6. Configuration
 
-Add the following to your `.env`. These bot-specific keys are not currently listed in `.env.example`, so treat this section as the reference template for bot setup:
+Add the following to your `.env`. Some of these bot-specific keys are already listed in `.env.example` (for example the DingTalk and Feishu app credentials), while others are not, so treat this section as a consolidated reference for bot setup:
 
 ```dotenv
 # --- Bot general ---
