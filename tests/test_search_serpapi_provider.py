@@ -210,6 +210,38 @@ class TestSerpAPISearchProvider(unittest.TestCase):
         self.assertEqual(resp.results[0].snippet, long_enough_snippet.strip())
         mock_fetch.assert_not_called()
 
+    def test_provider_ignores_non_list_rich_snippet_extensions(self) -> None:
+        provider = SerpAPISearchProvider(["dummy_key"])
+
+        with self._patch_serpapi(
+            {
+                "organic_results": [
+                    {
+                        "title": "Malformed extensions payload",
+                        "link": "https://example.com/malformed-extensions",
+                        "source": "Example",
+                        "rich_snippet": {
+                            "top": {
+                                "extensions": True,
+                            },
+                            "bottom": {
+                                "extensions": 1,
+                                "detected_extensions": {
+                                    "rating": 4.5,
+                                },
+                            },
+                        },
+                    }
+                ]
+            }
+        ), patch("src.search_service.fetch_url_content") as mock_fetch:
+            resp = provider.search("阿里巴巴 财报", max_results=3)
+
+        self.assertTrue(resp.success)
+        self.assertEqual(len(resp.results), 1)
+        self.assertIn("rating: 4.5", resp.results[0].snippet)
+        mock_fetch.assert_not_called()
+
     def test_extract_rich_snippet_extensions_handles_non_dict_payloads(self) -> None:
         self.assertEqual(
             SerpAPISearchProvider._extract_rich_snippet_extensions(
@@ -288,6 +320,48 @@ class TestSerpAPISearchProvider(unittest.TestCase):
                     {
                         "title": "PDF attachment",
                         "link": "https://example.com/report.PDF?download=1",
+                        "snippet": "附件摘要很短",
+                        "source": "Example",
+                    },
+                    {
+                        "title": "HTML article",
+                        "link": "https://example.com/article",
+                        "snippet": "正文摘要也短",
+                        "source": "Example",
+                    },
+                    {
+                        "title": "Third short result",
+                        "link": "https://example.com/third-short",
+                        "snippet": "还是很短",
+                        "source": "Example",
+                    },
+                ]
+            }
+        ), patch(
+            "src.search_service.fetch_url_content",
+            return_value="网页正文补充信息 " * 40,
+        ) as mock_fetch:
+            resp = provider.search("阿里巴巴 财报", max_results=3)
+
+        self.assertTrue(resp.success)
+        self.assertEqual(len(resp.results), 3)
+        mock_fetch.assert_called_once_with(
+            "https://example.com/article",
+            timeout=SerpAPISearchProvider._ORGANIC_CONTENT_FETCH_TIMEOUT,
+        )
+        self.assertEqual(resp.results[0].snippet, "附件摘要很短")
+        self.assertIn("【网页详情】", resp.results[1].snippet)
+        self.assertEqual(resp.results[2].snippet, "还是很短")
+
+    def test_provider_skips_query_encoded_attachment_and_fetches_next_result(self) -> None:
+        provider = SerpAPISearchProvider(["dummy_key"])
+
+        with self._patch_serpapi(
+            {
+                "organic_results": [
+                    {
+                        "title": "Attachment behind download endpoint",
+                        "link": "https://example.com/download?file=report.pdf",
                         "snippet": "附件摘要很短",
                         "source": "Example",
                     },

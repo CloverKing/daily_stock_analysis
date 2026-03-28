@@ -21,7 +21,7 @@ from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from typing import List, Dict, Any, Optional, Tuple
 from itertools import cycle
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, unquote, urlparse
 import requests
 from newspaper import Article, Config
 from tenacity import (
@@ -662,12 +662,14 @@ class SerpAPISearchProvider(BaseSearchProvider):
             if not isinstance(section_data, dict):
                 continue
 
-            for raw_value in section_data.get("extensions") or []:
-                value = cls._normalize_organic_text(raw_value)
-                if not value or value in seen:
-                    continue
-                seen.add(value)
-                extensions.append(value)
+            raw_extensions = section_data.get("extensions")
+            if isinstance(raw_extensions, (list, tuple, set)):
+                for raw_value in raw_extensions:
+                    value = cls._normalize_organic_text(raw_value)
+                    if not value or value in seen:
+                        continue
+                    seen.add(value)
+                    extensions.append(value)
 
             for raw_value in cls._flatten_rich_snippet_values(
                 section_data.get("detected_extensions")
@@ -738,6 +740,21 @@ class SerpAPISearchProvider(BaseSearchProvider):
         return snippet
 
     @classmethod
+    def _matches_skipped_content_fetch_suffix(cls, value: Any) -> bool:
+        """判断链接片段是否指向附件或其他非 HTML 资源。"""
+        normalized_value = cls._normalize_organic_text(value).lower()
+        if not normalized_value:
+            return False
+
+        decoded_value = unquote(normalized_value)
+        if decoded_value.endswith(cls._SKIPPED_CONTENT_FETCH_SUFFIXES):
+            return True
+
+        return urlparse(decoded_value).path.lower().endswith(
+            cls._SKIPPED_CONTENT_FETCH_SUFFIXES
+        )
+
+    @classmethod
     def _should_fetch_organic_content(
         cls,
         *,
@@ -767,7 +784,16 @@ class SerpAPISearchProvider(BaseSearchProvider):
         if parsed_link.scheme not in {"http", "https"}:
             return False
 
-        return not parsed_link.path.lower().endswith(cls._SKIPPED_CONTENT_FETCH_SUFFIXES)
+        if cls._matches_skipped_content_fetch_suffix(parsed_link.path):
+            return False
+
+        for key, value in parse_qsl(parsed_link.query, keep_blank_values=True):
+            if cls._matches_skipped_content_fetch_suffix(
+                key
+            ) or cls._matches_skipped_content_fetch_suffix(value):
+                return False
+
+        return True
 
     @classmethod
     def _merge_organic_snippet_with_content(cls, snippet: str, content: str) -> str:
