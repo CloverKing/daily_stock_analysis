@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { LLMChannelEditor } from '../LLMChannelEditor';
 
@@ -53,6 +53,7 @@ describe('LLMChannelEditor', () => {
       />
     );
 
-    expect(screen.getByText('minimax/MiniMax-M1')).toBeInTheDocument();
+    const primaryModelSelect = screen.getByRole('combobox', { name: '主模型' });
+    expect(within(primaryModelSelect).getByRole('option', { name: 'minimax/MiniMax-M1' })).toBeInTheDocument();
   });
 });
