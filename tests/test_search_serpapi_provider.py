@@ -395,6 +395,41 @@ class TestSerpAPISearchProvider(unittest.TestCase):
         self.assertIn("【网页详情】", resp.results[1].snippet)
         self.assertEqual(resp.results[2].snippet, "还是很短")
 
+    def test_provider_skips_non_string_link_and_keeps_fetch_budget(self) -> None:
+        provider = SerpAPISearchProvider(["dummy_key"])
+
+        with self._patch_serpapi(
+            {
+                "organic_results": [
+                    {
+                        "title": "Malformed link result",
+                        "link": {"href": "https://example.com/broken"},
+                        "snippet": "摘要过短",
+                        "source": "Example",
+                    },
+                    {
+                        "title": "HTML article",
+                        "link": "https://example.com/article",
+                        "snippet": "正文摘要也短",
+                        "source": "Example",
+                    },
+                ]
+            }
+        ), patch(
+            "src.search_service.fetch_url_content",
+            return_value="网页正文补充信息 " * 40,
+        ) as mock_fetch:
+            resp = provider.search("阿里巴巴 财报", max_results=2)
+
+        self.assertTrue(resp.success)
+        self.assertEqual(len(resp.results), 2)
+        mock_fetch.assert_called_once_with(
+            "https://example.com/article",
+            timeout=SerpAPISearchProvider._ORGANIC_CONTENT_FETCH_TIMEOUT,
+        )
+        self.assertEqual(resp.results[0].snippet, "摘要过短")
+        self.assertIn("【网页详情】", resp.results[1].snippet)
+
     def test_provider_fetch_failure_stays_fail_open_and_stops_after_budget(self) -> None:
         provider = SerpAPISearchProvider(["dummy_key"])
 

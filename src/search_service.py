@@ -758,7 +758,7 @@ class SerpAPISearchProvider(BaseSearchProvider):
     def _should_fetch_organic_content(
         cls,
         *,
-        link: str,
+        link: Any,
         snippet: str,
         rank: int,
         fetched_count: int,
@@ -775,6 +775,9 @@ class SerpAPISearchProvider(BaseSearchProvider):
             return False
 
         if len(snippet) >= cls._ORGANIC_SNIPPET_SUFFICIENT_LENGTH:
+            return False
+
+        if not isinstance(link, str):
             return False
 
         if not link or not link.startswith(("http://", "https://")):
