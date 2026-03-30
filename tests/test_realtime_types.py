@@ -81,6 +81,57 @@ class CircuitBreakerConcurrencyTestCase(unittest.TestCase):
         self.assertGreaterEqual(state["failures"], 0)
         self.assertGreaterEqual(state["half_open_calls"], 0)
 
+    def test_half_open_not_stuck_after_inconclusive_probe(self):
+        """Regression: a probe that returns None (no record_success/record_failure)
+        must not permanently block the source in HALF_OPEN."""
+        breaker = CircuitBreaker(
+            failure_threshold=1,
+            cooldown_seconds=0.01,
+            half_open_max_calls=1,
+        )
+        # Trip the breaker
+        breaker.record_failure("src", "boom")
+        time.sleep(0.02)
+
+        # Probe goes through (OPEN -> HALF_OPEN -> slot consumed)
+        self.assertTrue(breaker.is_available("src"))
+        self.assertEqual(breaker.get_status()["src"], CircuitBreaker.HALF_OPEN)
+
+        # Simulate ambiguous None result via record_inconclusive
+        breaker.record_inconclusive("src")
+        self.assertEqual(breaker.get_status()["src"], CircuitBreaker.OPEN)
+
+        # After cooldown, source becomes available again
+        time.sleep(0.02)
+        self.assertTrue(breaker.is_available("src"))
+
+    def test_half_open_self_heals_without_callback(self):
+        """If neither record_success/record_failure/record_inconclusive is called,
+        the HALF_OPEN state self-heals after another cooldown period."""
+        breaker = CircuitBreaker(
+            failure_threshold=1,
+            cooldown_seconds=0.01,
+            half_open_max_calls=1,
+        )
+        breaker.record_failure("src", "boom")
+        time.sleep(0.02)
+
+        # First probe consumes the slot
+        self.assertTrue(breaker.is_available("src"))
+        # Slot exhausted, blocked
+        self.assertFalse(breaker.is_available("src"))
+
+        # After cooldown, self-healing allows another probe
+        time.sleep(0.02)
+        self.assertTrue(breaker.is_available("src"))
+
+    def test_record_inconclusive_noop_in_closed(self):
+        """record_inconclusive must be a no-op when the breaker is CLOSED."""
+        breaker = CircuitBreaker(failure_threshold=3, cooldown_seconds=60.0)
+        breaker.record_success("src")
+        breaker.record_inconclusive("src")
+        self.assertEqual(breaker.get_status()["src"], CircuitBreaker.CLOSED)
+
 
 if __name__ == "__main__":
     unittest.main()

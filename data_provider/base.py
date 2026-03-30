@@ -1312,6 +1312,9 @@ class DataFetcherManager:
                     circuit_breaker.record_success(source_key)
                     logger.info(f"[筹码分布] {stock_code} 成功获取 (来源: {fetcher_name})")
                     return chip
+                else:
+                    # 空结果：释放 HALF_OPEN 探测名额，避免卡死
+                    circuit_breaker.record_inconclusive(source_key)
             except Exception as e:
                 logger.warning(f"[筹码分布] {fetcher_name} 获取 {stock_code} 失败: {e}")
                 circuit_breaker.record_failure(source_key, str(e))

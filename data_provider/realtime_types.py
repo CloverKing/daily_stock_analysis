@@ -330,25 +330,48 @@ class CircuitBreaker:
                 # 检查冷却时间
                 time_since_failure = current_time - state['last_failure_time']
                 if time_since_failure >= self.cooldown_seconds:
-                    # 冷却完成，进入半开状态，并为当前探测预留名额
+                    # 冷却完成，进入半开状态（不预占名额，由 HALF_OPEN 分支统一管理）
                     state['state'] = self.HALF_OPEN
-                    state['half_open_calls'] = 1
+                    state['half_open_calls'] = 0
+                    state['last_failure_time'] = current_time
                     logger.info(f"[熔断器] {source} 冷却完成，进入半开状态")
-                    return True
-
-                remaining = self.cooldown_seconds - time_since_failure
-                logger.debug(f"[熔断器] {source} 处于熔断状态，剩余冷却时间: {remaining:.0f}s")
-                return False
+                    # Fall through to HALF_OPEN check below
+                else:
+                    remaining = self.cooldown_seconds - time_since_failure
+                    logger.debug(f"[熔断器] {source} 处于熔断状态，剩余冷却时间: {remaining:.0f}s")
+                    return False
 
             if state['state'] == self.HALF_OPEN:
-                # 半开状态下限制请求次数，并在放行时立即占用名额。
                 if state['half_open_calls'] < self.half_open_max_calls:
                     state['half_open_calls'] += 1
+                    return True
+                # 所有探测名额已用完；若冷却时间再次到期仍未收到
+                # record_success/record_failure 回调，重置名额允许重新探测，
+                # 避免永久卡在 HALF_OPEN。
+                time_since_failure = current_time - state['last_failure_time']
+                if time_since_failure >= self.cooldown_seconds:
+                    state['half_open_calls'] = 1
+                    state['last_failure_time'] = current_time
+                    logger.info(f"[熔断器] {source} 半开状态探测超时，重新探测")
                     return True
                 return False
 
             return True
     
+    def record_inconclusive(self, source: str) -> None:
+        """记录不确定的探测结果（如返回 None）。
+
+        仅影响 HALF_OPEN 状态：将其转回 OPEN 以便冷却后重新探测。
+        CLOSED 状态下为空操作，不影响失败计数。
+        """
+        with self._lock:
+            state = self._get_state_locked(source)
+            if state['state'] == self.HALF_OPEN:
+                state['state'] = self.OPEN
+                state['half_open_calls'] = 0
+                state['last_failure_time'] = time.time()
+                logger.info(f"[熔断器] {source} 半开探测结果不确定，重新进入冷却")
+
     def record_success(self, source: str) -> None:
         """记录成功请求"""
         with self._lock:
