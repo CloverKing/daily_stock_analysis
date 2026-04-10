@@ -524,6 +524,16 @@ class TestOrchestratorModes(unittest.TestCase):
             {"technical": AGENT_MAX_STEPS_DEFAULT + 2, "intel": AGENT_MAX_STEPS_DEFAULT + 2, "risk": AGENT_MAX_STEPS_DEFAULT + 2, "decision": AGENT_MAX_STEPS_DEFAULT + 2},
         )
 
+    def test_prepare_agent_raised_limit_overrides_low_default_agent(self):
+        orch = self._make_orchestrator("full")
+        orch.max_steps = AGENT_MAX_STEPS_DEFAULT + 2
+        decision = MagicMock(agent_name="decision", max_steps=3)
+
+        prepared = orch._prepare_agent(decision)
+
+        self.assertIs(prepared, decision)
+        self.assertEqual(prepared.max_steps, AGENT_MAX_STEPS_DEFAULT + 2)
+
     def test_build_context_from_dict(self):
         orch = self._make_orchestrator()
         ctx = orch._build_context(
@@ -596,6 +606,37 @@ class TestOrchestratorExecution(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertIn("Analysis Summary", result.content)
+
+    def test_execute_pipeline_degrades_on_skill_agent_failure(self):
+        orch = self._make_orchestrator()
+        orch.mode = "specialist"
+        ctx = AgentContext(query="test", stock_code="600519")
+        ctx.meta["response_mode"] = "chat"
+        ctx.add_opinion(AgentOpinion(agent_name="technical", signal="buy", confidence=0.8, reasoning="Strong trend"))
+
+        technical = MagicMock(agent_name="technical")
+        technical.run.return_value = self._stage_result("technical")
+        intel = MagicMock(agent_name="intel")
+        intel.run.return_value = self._stage_result("intel")
+        risk = MagicMock(agent_name="risk")
+        risk.run.return_value = self._stage_result("risk")
+        skill = MagicMock(agent_name="skill_bull_trend")
+        skill.run.return_value = self._stage_result(
+            "skill_bull_trend",
+            StageStatus.FAILED,
+            error="skill failed",
+        )
+        decision = MagicMock(agent_name="decision")
+        decision.run.return_value = self._stage_result("decision", raw_text="final answer")
+
+        with patch.object(orch, "_build_agent_chain", return_value=[technical, intel, risk, decision]):
+            with patch.object(orch, "_build_specialist_agents", return_value=[skill]):
+                result = orch._execute_pipeline(ctx, parse_dashboard=False)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.content, "final answer")
+        skill.run.assert_called_once()
+        decision.run.assert_called_once()
 
     def test_execute_pipeline_skips_stage_when_remaining_budget_below_minimum(self):
         orch = self._make_orchestrator(config=SimpleNamespace(agent_orchestrator_timeout_s=20))
