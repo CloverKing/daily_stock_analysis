@@ -178,9 +178,9 @@ python main.py --serve-only
 Analyzed 3 stocks | 🟢 Buy:0 🟡 Watch:2 🔴 Sell:1
 
 📊 Summary
-⚪ 000657: Watch | Score 65 | Bullish
-⚪ 600105: Watch | Score 48 | Range-bound
-🟡 300260: Sell | Score 35 | Bearish
+🟡 000657: Watch | Score 65 | Bullish
+🟡 600105: Watch | Score 48 | Range-bound
+🔴 300260: Sell | Score 35 | Bearish
 
 🚨 Risk Alerts:
 Risk 1: Main-force funds showed notable outflow.
@@ -257,6 +257,7 @@ Contributions are welcome. Before opening a PR, please run the checks that match
 
 # Web
 cd apps/dsa-web
+npm ci
 npm run lint
 npm run build
 ```
