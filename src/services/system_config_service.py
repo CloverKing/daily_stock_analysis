@@ -361,10 +361,17 @@ class SystemConfigService:
         api_key: str,
         models: Sequence[str] = (),
         timeout_seconds: float = 20.0,
+        mask_token: str = "******",
     ) -> Dict[str, Any]:
         """Discover available models from an OpenAI-compatible `/models` endpoint."""
         channel_name = name.strip() or "channel"
         existing_models = [str(m).strip() for m in models if str(m).strip()]
+        api_key = self._resolve_request_api_key(
+            channel_name=channel_name,
+            protocol=protocol,
+            api_key=api_key,
+            mask_token=mask_token,
+        )
         validation_issues, resolved_protocol = self._validate_llm_channel_connection(
             channel_name=channel_name,
             protocol_value=protocol,
@@ -1053,11 +1060,9 @@ class SystemConfigService:
         explicit_primary_model = (effective_map.get("LITELLM_MODEL") or "").strip()
         available_models = cls._collect_yaml_models_from_map(effective_map)
         if available_models:
+            available_model_set = set(available_models)
             if explicit_primary_model:
-                if explicit_primary_model in set(available_models) or cls._has_runtime_source_for_model(
-                    explicit_primary_model,
-                    effective_map,
-                ):
+                if explicit_primary_model in available_model_set:
                     return explicit_primary_model, "litellm_config"
                 return "", ""
             return available_models[0], "litellm_config"

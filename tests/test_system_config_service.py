@@ -788,6 +788,35 @@ class SystemConfigServiceTestCase(unittest.TestCase):
         self.assertFalse(mock_get.call_args.kwargs["allow_redirects"])
 
     @patch("src.services.system_config_service.requests.get")
+    def test_discover_llm_channel_models_resolves_masked_saved_api_key(self, mock_get) -> None:
+        self._rewrite_env(
+            "LLM_CHANNELS=primary",
+            "LLM_PRIMARY_PROTOCOL=openai",
+            "LLM_PRIMARY_BASE_URL=https://api.example.com/v1",
+            "LLM_PRIMARY_API_KEY=persisted-secret",
+            "LLM_PRIMARY_MODELS=gpt-4o-mini",
+        )
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": [{"id": "gpt-4o-mini"}]}
+        mock_get.return_value = mock_response
+
+        payload = self.service.discover_llm_channel_models(
+            name="primary",
+            protocol="openai",
+            base_url="https://api.example.com/v1",
+            api_key="******",
+            models=["gpt-4o-mini"],
+        )
+
+        self.assertTrue(payload["success"])
+        self.assertEqual(
+            mock_get.call_args.kwargs["headers"]["Authorization"],
+            "Bearer persisted-secret",
+        )
+
+    @patch("src.services.system_config_service.requests.get")
     def test_discover_llm_channel_models_rejects_redirect_responses(self, mock_get) -> None:
         mock_response = Mock()
         mock_response.ok = True
@@ -841,6 +870,24 @@ class SystemConfigServiceTestCase(unittest.TestCase):
         models_url = SystemConfigService._build_llm_models_url("https://api.deepseek.com")
 
         self.assertEqual(models_url, "https://api.deepseek.com/models")
+
+    @patch.object(
+        Config,
+        "_parse_litellm_yaml",
+        return_value=[{"model_name": "gemini/gemini-2.5-flash", "litellm_params": {"model": "gemini/gemini-2.5-flash"}}],
+    )
+    def test_get_setup_status_requires_primary_model_declared_in_litellm_yaml(self, _mock_parse_yaml) -> None:
+        self._rewrite_env(
+            "LITELLM_CONFIG=/tmp/litellm.yaml",
+            "LITELLM_MODEL=openai/gpt-4o-mini",
+            "OPENAI_API_KEY=sk-legacy-value",
+            "STOCK_LIST=600519",
+        )
+
+        status = self.service.get_setup_status()
+
+        llm_check = next(check for check in status["checks"] if check["key"] == "llm_primary")
+        self.assertEqual(llm_check["status"], "needs_action")
 
     def test_validate_reports_invalid_event_rule_semantics(self) -> None:
         validation = self.service.validate(items=[{
