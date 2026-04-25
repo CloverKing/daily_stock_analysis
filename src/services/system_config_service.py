@@ -28,6 +28,7 @@ from src.config import (
     normalize_agent_litellm_model,
     normalize_news_strategy_profile,
     normalize_llm_channel_model,
+    normalize_litellm_temperature,
     parse_env_bool,
     resolve_news_window_days,
     resolve_llm_channel_protocol,
@@ -579,7 +580,7 @@ class SystemConfigService:
         call_kwargs: Dict[str, Any] = {
             "model": resolved_model,
             "messages": [{"role": "user", "content": "Reply with OK"}],
-            "temperature": self._normalize_test_llm_temperature(
+            "temperature": normalize_litellm_temperature(
                 resolved_model,
                 self._get_runtime_llm_temperature(),
             ),
@@ -1482,17 +1483,6 @@ class SystemConfigService:
             return float(getattr(config, "llm_temperature", 0.7))
         except (TypeError, ValueError):
             return 0.7
-
-    @staticmethod
-    def _normalize_test_llm_temperature(model: str, temperature: float, default: float = 0.7) -> float:
-        """Apply provider-required temperature overrides for ad-hoc channel tests."""
-        normalized_model = (model or "").strip().lower()
-        if "kimi-k2.6" in normalized_model:
-            return 1.0
-        try:
-            return float(temperature)
-        except (TypeError, ValueError):
-            return default
 
     @staticmethod
     def _extract_llm_discovery_error(response: requests.Response) -> str:
