@@ -372,7 +372,14 @@ class SystemConfigService:
 
     def get_setup_status(self) -> Dict[str, Any]:
         """Return the first-run setup completion status for the current config."""
-        effective_map = self._read_persisted_config_map()
+        effective_map = self._build_runtime_backed_config_map(
+            self._read_persisted_config_map(),
+            candidate_keys=[
+                key
+                for key in get_registered_field_keys()
+                if str(key).upper() != "STOCK_LIST"
+            ],
+        )
         llm_check = self._build_primary_llm_check(effective_map=effective_map)
         agent_check = self._build_agent_llm_check(effective_map=effective_map, llm_check=llm_check)
         stock_check = self._build_stock_list_check(effective_map=effective_map)

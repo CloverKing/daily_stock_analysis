@@ -250,6 +250,20 @@ class SystemConfigServiceTestCase(unittest.TestCase):
         self.assertEqual(llm_check["status"], "configured")
         self.assertTrue(status["ready_for_smoke"])
 
+    def test_get_setup_status_accepts_runtime_injected_primary_model_and_legacy_api_key(self) -> None:
+        self._rewrite_env(
+            "STOCK_LIST=600519",
+        )
+        os.environ["LITELLM_MODEL"] = "vertex_ai/gemini-2.5-flash"
+        os.environ["GEMINI_API_KEY"] = "runtime-secret"
+
+        status = self.service.get_setup_status()
+
+        llm_check = next(check for check in status["checks"] if check["key"] == "llm_primary")
+        self.assertEqual(llm_check["status"], "configured")
+        self.assertIn("vertex_ai/gemini-2.5-flash", llm_check["message"])
+        self.assertTrue(status["ready_for_smoke"])
+
     @patch("litellm.completion")
     def test_test_llm_channel_resolves_masked_saved_openai_legacy_key(self, mock_completion) -> None:
         self._rewrite_env(

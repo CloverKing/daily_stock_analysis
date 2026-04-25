@@ -208,6 +208,17 @@ export function buildSetupLLMPayload(items: SystemConfigItem[], maskToken: strin
       maskToken,
     };
   }
+  if (normalizedPrimaryModel.startsWith('vertex_ai/') && (itemMap.get('GEMINI_API_KEYS') || itemMap.get('GEMINI_API_KEY') || '').trim()) {
+    return {
+      name: 'vertex_ai',
+      protocol: 'vertex_ai',
+      baseUrl: '',
+      apiKey: itemMap.get('GEMINI_API_KEYS') || itemMap.get('GEMINI_API_KEY') || '',
+      models: [primaryModel],
+      enabled: true,
+      maskToken,
+    };
+  }
   if (normalizedPrimaryModel.startsWith('deepseek/') && (itemMap.get('DEEPSEEK_API_KEYS') || itemMap.get('DEEPSEEK_API_KEY') || '').trim()) {
     return {
       name: 'deepseek',
