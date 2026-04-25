@@ -79,6 +79,8 @@ LITELLM_MODEL=ollama/qwen3:8b
 - **OpenAI Compatible Base URL 约束**：LiteLLM 的 OpenAI Compatible 文档要求运行时模型使用 `openai/` 前缀，并提醒很多代理/兼容服务的 `api_base` 需要显式带上 `/v1`，否则测试或模型发现容易出现 `Not Found`。来源：<https://docs.litellm.ai/docs/providers/openai_compatible>
 - **Gemini API Key 模式约束**：LiteLLM Gemini 文档说明，使用简单 API Key 时应显式写 `gemini/<model>`；裸模型名会默认走 Vertex AI，需要额外的 GCP 凭证与项目配置。因此首次启动向导在 Gemini API Key 场景下会保持 `gemini/` 前缀，不会偷偷切到 Vertex AI 语义。来源：<https://docs.litellm.ai/docs/providers/gemini>、<https://ai.google.dev/gemini-api/docs/models>
 - **当前仓库依赖/运行时范围**：本仓库当前将 LiteLLM 锁定在 `litellm>=1.80.10,<1.82.7`，并显式保留 `openai>=1.0.0` 依赖；首次启动的 LLM 测试、`/models` 发现与渠道保存逻辑均按这一依赖范围实现。若你本地强行升级到超出该范围的新版本，建议先重新执行 `python test_env.py --llm` 与 Web 设置页“测试当前 LLM / 获取模型”再决定是否保留升级。
+- **首次启动保存/清理语义**：首页首次启动卡片与设置页共用同一套后端配置保存接口。保存 1-3 只试跑股票时只会更新 `STOCK_LIST`；渠道保存前的“运行时模型清理”只会清空**已被当前渠道模型列表移除**的 `LITELLM_MODEL` / `AGENT_LITELLM_MODEL` / `VISION_MODEL`，并按交集裁剪 `LITELLM_FALLBACK_MODELS`，不会顺带清空仍然有效的 legacy `*_API_KEY` 或其他 provider 运行时选择。
+- **本次 MVP 回归覆盖**：后端围绕 `tests/test_system_config_service.py`、`tests/test_system_config_api.py` 覆盖了 setup status、LLM 测试、`STOCK_LIST` 保存与 dry-run 语义；前端围绕 `apps/dsa-web/src/pages/__tests__/HomePage.test.tsx`、`apps/dsa-web/src/components/settings/__tests__/LLMChannelEditor.test.tsx` 覆盖了首页向导入口、legacy 主模型回退、模型发现与保存前清理链路。
 - **旧配置迁移路径**：已有 `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` 等 legacy 配置仍可继续跑通首次启动；若你切换到 `LLM_CHANNELS` 渠道模式，建议同时把 `LITELLM_MODEL`、`AGENT_LITELLM_MODEL`、`LITELLM_FALLBACK_MODELS` 调整到当前已启用渠道的模型集合，避免保留指向旧模型名的运行时选择。
 - **回退路径**：如果新渠道预设或首次启动测试不符合你的环境，最安全的回退方式是恢复到原来的 `.env`：保留 legacy `*_API_KEY` + 原主模型配置，或把 `LITELLM_MODEL` 手动改回旧值。首次启动的 dry-run 只做轻量数据抓取校验，不会生成正式报告，也不会替你删除已有配置。
 
@@ -128,18 +130,6 @@ LITELLM_MODEL=ollama/qwen3:8b
 
 - 如果你通过 OpenAI Compatible 渠道接 MiniMax，请在渠道模型里直接填写 `minimax/<模型名>`，例如 `minimax/MiniMax-M1`。
 - Web 设置页里的主模型、Agent 主模型、Fallback、Vision 下拉会保留这个值原样展示，不会再错误改写成 `openai/minimax/<模型名>`。
-
-### Kimi K2.6 固定 temperature 兼容说明
-
-- Moonshot 官方说明 Kimi API 兼容 OpenAI 接口，Base URL 使用 `https://api.moonshot.ai/v1`：<https://platform.kimi.ai/docs/guide/kimi-k2-6-quickstart>
-- LiteLLM 官方要求 OpenAI Compatible 渠道模型名使用 `openai/` 前缀：<https://docs.litellm.ai/docs/providers/openai_compatible>
-- Moonshot 官方兼容性文档区分两种固定值：**thinking 模式固定 `1.0`，non-thinking 模式固定 `0.6`**；传其它值会被接口拒绝：<https://platform.moonshot.ai/docs/guide/compatibility#parameters-differences-in-request-body>
-- 当前仓库的运行时依赖窗口是 `litellm>=1.80.10,<1.82.7`（见 `requirements.txt`）；本次兼容逻辑按该范围回归验证了主分析、大盘复盘、Agent 直连 LiteLLM，以及系统设置页的渠道连通性测试。
-- 因此本项目会在请求发出前按**实际请求模式**归一化 `kimi-k2.6` 及其 `kimi-k2.6-*` 变体：默认 / thinking 路径使用 `temperature=1.0`；如果你的 LiteLLM YAML 路由别名里显式写了 `litellm_params.extra_body.thinking.type: disabled`（或等价 non-thinking 配置），则自动切到 `temperature=0.6`。你在 `.env` 或 Web 设置里保存的 `LLM_TEMPERATURE` 不会被改写。
-- `SystemConfigService` 在 Web 设置保存 / 桌面端 `.env` 导入时只更新你提交的 key，不会因为切到 Kimi 静默清空、迁移或重写已有 `LLM_TEMPERATURE`；渠道测试请求里临时使用的 `1.0/0.6` 也不会回写到配置文件。
-- 非 Kimi 主模型、非 Kimi fallback 以及切回普通模型后的请求，仍继续使用你配置的温度；也就是说旧配置无需迁移，切换模型即可自动恢复原行为。
-- 本仓库兼容性回归覆盖见：`tests/test_llm_channel_config.py`、`tests/test_market_analyzer_generate_text.py`、`tests/test_agent_pipeline.py`、`tests/test_system_config_service.py`。
-- 最小回滚方式：直接回退本次 Kimi 固定温度相关改动，无需单独迁移已有 `LLM_TEMPERATURE` 配置。
 
 > **致命避坑说明**：如果你启用了 `LLM_CHANNELS`，那么你直接写在外面的 `DEEPSEEK_API_KEY` 或 `OPENAI_API_KEY` 将**全部失效（系统一律无视）**！二者**选其一即可**，千万不要既写了新手模式又写了渠道模式结果产生冲突。
 > **Docker 注意**：如果你在 `docker compose environment:` 或 `docker run -e` 中显式传入 `LITELLM_MODEL`、`LLM_CHANNELS`、`LLM_DEEPSEEK_MODELS` 等变量，容器重启后这些环境变量会覆盖 Web 设置页写入的 `.env`，需要同步修改部署配置。
