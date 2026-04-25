@@ -309,9 +309,32 @@ def get_configured_llm_models(model_list: List[Dict[str, Any]]) -> List[str]:
     return models
 
 
-def get_fixed_litellm_temperature(model: str) -> Optional[float]:
+def resolve_litellm_wire_model(
+    model: str,
+    model_list: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    """Resolve a router alias to its underlying LiteLLM wire model."""
+    normalized_model = (model or "").strip()
+    if not normalized_model or not model_list:
+        return normalized_model
+
+    for entry in model_list:
+        model_name = str(entry.get("model_name") or "").strip()
+        if model_name != normalized_model:
+            continue
+        params = entry.get("litellm_params", {}) or {}
+        wire_model = str(params.get("model") or "").strip()
+        if wire_model:
+            return wire_model
+    return normalized_model
+
+
+def get_fixed_litellm_temperature(
+    model: str,
+    model_list: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[float]:
     """Return a provider-mandated temperature for known strict models."""
-    normalized_model = (model or "").strip().lower()
+    normalized_model = resolve_litellm_wire_model(model, model_list).lower()
     if not normalized_model:
         return None
     model_parts = [part for part in re.split(r"[/:\s]+", normalized_model) if part]
@@ -321,9 +344,15 @@ def get_fixed_litellm_temperature(model: str) -> Optional[float]:
     return None
 
 
-def normalize_litellm_temperature(model: str, temperature: Optional[float], *, default: float = 0.7) -> float:
+def normalize_litellm_temperature(
+    model: str,
+    temperature: Optional[float],
+    *,
+    default: float = 0.7,
+    model_list: Optional[List[Dict[str, Any]]] = None,
+) -> float:
     """Normalize temperature before sending a LiteLLM request."""
-    fixed_temperature = get_fixed_litellm_temperature(model)
+    fixed_temperature = get_fixed_litellm_temperature(model, model_list=model_list)
     if fixed_temperature is not None:
         return fixed_temperature
     if temperature is None:

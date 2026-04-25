@@ -847,6 +847,7 @@ class TestAgentConstructionChain(unittest.TestCase):
 
         from src.agent.llm_adapter import LLMToolAdapter
         adapter = LLMToolAdapter(config=mock_cfg)
+        adapter._router = None
         response = SimpleNamespace(
             choices=[
                 SimpleNamespace(
@@ -864,6 +865,53 @@ class TestAgentConstructionChain(unittest.TestCase):
                 [{"role": "user", "content": "hi"}],
                 [],
                 "openai/kimi-k2.6",
+                temperature=0.2,
+            )
+
+        self.assertEqual(result.content, "agent ok")
+        self.assertEqual(mock_completion.call_args.kwargs["temperature"], 1.0)
+
+    @patch("src.agent.llm_adapter.Router")
+    def test_llm_adapter_normalizes_kimi_k26_temperature_for_yaml_alias(self, _mock_router):
+        """Agent direct LiteLLM calls should normalize through routed YAML aliases."""
+        mock_cfg = SimpleNamespace(
+            agent_litellm_model="",
+            litellm_model="kimi_router",
+            litellm_fallback_models=[],
+            llm_model_list=[
+                {
+                    "model_name": "kimi_router",
+                    "litellm_params": {"model": "openai/kimi-k2.6"},
+                }
+            ],
+            llm_temperature=0.2,
+            gemini_api_keys=[],
+            anthropic_api_keys=[],
+            openai_api_keys=[],
+            deepseek_api_keys=[],
+            openai_base_url=None,
+        )
+
+        from src.agent.llm_adapter import LLMToolAdapter
+        adapter = LLMToolAdapter(config=mock_cfg)
+        adapter._router = None
+        response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content="agent ok",
+                        tool_calls=[],
+                    )
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=1, completion_tokens=2, total_tokens=3),
+        )
+
+        with patch("src.agent.llm_adapter.litellm.completion", return_value=response) as mock_completion:
+            result = adapter._call_litellm_model(
+                [{"role": "user", "content": "hi"}],
+                [],
+                "kimi_router",
                 temperature=0.2,
             )
 

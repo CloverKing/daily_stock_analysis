@@ -1169,7 +1169,11 @@ class GeminiAnalyzer:
                         {"role": "system", "content": effective_system_prompt},
                         {"role": "user", "content": prompt},
                     ],
-                    "temperature": normalize_litellm_temperature(model, requested_temperature),
+                    "temperature": normalize_litellm_temperature(
+                        model,
+                        requested_temperature,
+                        model_list=config.llm_model_list,
+                    ),
                     "max_tokens": max_tokens,
                 }
                 extra = get_thinking_extra_body(model_short)

@@ -399,6 +399,7 @@ class LLMToolAdapter:
             "temperature": normalize_litellm_temperature(
                 model,
                 self._get_temperature() if temperature is None else temperature,
+                model_list=self._config.llm_model_list,
             ),
         }
         if max_tokens is not None:
