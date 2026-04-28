@@ -1200,6 +1200,33 @@ class TestAgentConstructionChain(unittest.TestCase):
         self.assertIn("window exceeded", result.content)
         mock_sleep.assert_not_called()
 
+    @patch("src.agent.llm_adapter.Router")
+    def test_llm_adapter_reports_missing_configuration_without_generic_none_error(self, _mock_router):
+        """Missing Agent model config should return a stable, actionable error message."""
+        mock_cfg = SimpleNamespace(
+            agent_litellm_model="",
+            litellm_model="",
+            litellm_fallback_models=[],
+            llm_model_list=[],
+            llm_temperature=0.7,
+            gemini_api_keys=[],
+            anthropic_api_keys=[],
+            openai_api_keys=[],
+            deepseek_api_keys=[],
+            openai_base_url=None,
+        )
+
+        from src.agent.llm_adapter import LLMToolAdapter
+        adapter = LLMToolAdapter(config=mock_cfg)
+
+        result = adapter.call_completion(messages=[{"role": "user", "content": "hi"}], tools=[])
+
+        self.assertEqual(result.provider, "error")
+        self.assertEqual(
+            result.content,
+            "No LLM configured. Please set LITELLM_MODEL, LLM_CHANNELS, or provider API keys before using Agent.",
+        )
+
 
 # ============================================================
 # _safe_int tests
